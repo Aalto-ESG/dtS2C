@@ -1,28 +1,11 @@
 # Scripts for processing datasets from our cluster
 
 
-## Get example data:
+Scripts for visualizing data from our Urban Transportation System (UTS) and 
+Industrial Logistics Warehouse (ILW) experiments.
 
-Follow instructions for running an experiment on a cluster and collecting its data.
+## Usage:
 
-TODO:
-- Add links to example datasets (google drive?)
-
-## Process raw data into dataframes:
-
-01_process_prometheus will create and save multiple dataframes from raw prometheus data
-
-Outputs:
-- `/intermediate/`
-  - Intermediate dataframes are used to make processing faster and to reduce memory usage
-    - full.df contains the unfiltered dataframe with all data
-    - Intermediate files makes it possible to stop processing and continue later on
-- In addition, the data is split per instance
-  - e.g., each worker node has its own dataframe (i.e., `worker1.df`, `worker2.df`, ...)
-  - Also data that is missing the name of the node has its own dataframe
-
-02_process_yolo will create and save a dataframe from the yolo csv-files
-
-## Use dataframes
-
-After processing data to dataframes, the data can be handled in any desired way.
+1. Collect data from the cluster
+2. Process the raw data into a dataset using tools from `dataset-tools`
+3. Use scripts in this folder to visualize results from the processed dataset
