@@ -1,0 +1,10 @@
+pandas
+matplotlib
+numpy
+seaborn
+glob2
+autogluon
+pyarrow
+python-Levenshtein
+ujson
+bokeh
