@@ -1,18 +1,8 @@
 """
-Run_4: Try to match image throughput of smallest yolo models with CARLA image throughput.
+Run_2: Day-night-cycle for all models adjusted to max throughput
 
-- Carla outputs
-    - 160x160: <=150 images per second
-    - 320x320: <=150 images per second
-    - 640x640: <=120 images per second
-    - 1280x1280: <=80 images per second
-- Kafka image outputs (based on run_3 at 1 mbps):
-    - 1 mbps: ~20 images per second
-    - 2 mbps: ~40 images per second
-    - 4 mbps: ~80 images per second
-    - 8 mbps: ~160 images per second
-    - 10 mbps: ~200 images per second
-- Use less models to get minimum viable plots for the paper
+- All models and resolutions
+- Set max mbps for each model depending on their max capability
 
 """
 
@@ -24,7 +14,7 @@ import subprocess
 import time
 import yaml
 import create_deployment_yaml
-from data_feeder import dummy_feeder, dummy_validate, yolo_to_csv, day_night_feeder, kafka_init, linear_feeder
+from data_feeder import dummy_feeder, dummy_validate, yolo_to_csv, day_night_feeder, kafka_init, linear_feeder, burst_feeder
 from data_extractor import extractor
 import datetime
 import argparse  # New import for argument parsing
@@ -35,21 +25,50 @@ parser.add_argument("--smoketest", action="store_true", help="Run a short smoket
 
 args = parser.parse_args()  # Parse arguments
 
+# Max throughputs (images per second with 5 worker nodes) based on run_5
+max_throughput_img_per_second = {
+    "yolov8n": {160: 454.2, 320: 326.4, 640: 145.6, 1280: 42.4},
+    "yolov9t": {160: 431.8, 320: 309.8, 640: 140.6, 1280: 41.6},
+    "yolov10n": {160: 447.6, 320: 333.4, 640: 160.8, 1280: 45.6},
+    "yolo11n": {160: 467.8, 320: 346.6, 640: 163.4, 1280: 47.4},
+    "yolov8s": {160: 348.2, 320: 183.8, 640: 59.2, 1280: 15.8},
+    "yolov9s": {160: 334.4, 320: 182.2, 640: 60.2, 1280: 16.0},
+    "yolov10s": {160: 362.4, 320: 204.4, 640: 70.6, 1280: 18.2},
+    "yolo11s": {160: 363.0, 320: 208.2, 640: 70.8, 1280: 18.2},
+    "yolov8m": {160: 219.2, 320: 88.4, 640: 24.4, 1280: 6.6},
+    "yolov9m": {160: 217.4, 320: 85.4, 640: 23.8, 1280: 6.0},
+    "yolov10m": {160: 248.4, 320: 105.6, 640: 30.0, 1280: 7.8},
+    "yolo11m": {160: 224.0, 320: 94.0, 640: 26.4, 1280: 7.0},
+    "yolov8l": {160: 139.6, 320: 46.8, 640: 12.6, 1280: 3.2},
+    "yolov9c": {160: 189.2, 320: 67.6, 640: 18.0, 1280: 4.8},
+    "yolov10l": {160: 167.8, 320: 58.8, 640: 15.8, 1280: 4.0},
+    "yolo11l": {160: 197.6, 320: 76.2, 640: 20.8, 1280: 5.2},
+    "yolov8x": {160: 102.4, 320: 31.4, 640: 8.2, 1280: 2.0},
+    "yolov9e": {160: 106.6, 320: 34.6, 640: 8.8, 1280: 2.4},
+    "yolov10x": {160: 136.8, 320: 44.8, 640: 12.0, 1280: 3.0},
+    "yolo11x": {160: 120.2, 320: 38.4, 640: 10.0, 1280: 2.6},
+}
+
+def img_per_second_to_mbps(images_per_second):
+    # 1 mbps = 20 images
+    return images_per_second / 20
+
+
 # Define the different YOLO_MODEL values to test
 yolo_models = []
-yolo_models += ["yolo11n", "yolo11s"]#, "yolo11m", "yolo11l", "yolo11x"]  # YOLO v11 released on v8.3.0 (2024-09-29)
-yolo_models += ["yolov10n", "yolov10s"]#, "yolov10m", "yolov10l", "yolov10x"]
-yolo_models += ["yolov9t", "yolov9s"]#, "yolov9m", "yolov9c", "yolov9e"]  # NOTE: Different naming on v9 yolo_models
-yolo_models += ["yolov8n", "yolov8s"]#, "yolov8m", "yolov8l", "yolov8x"]
-# feeder = day_night_feeder
-feeder = linear_feeder  # Use linear_feeder or day_night_feeder
+yolo_models += ["yolo11n", "yolo11s", "yolo11m", "yolo11l", "yolo11x"]  # YOLO v11 released on v8.3.0 (2024-09-29)
+yolo_models += ["yolov10n", "yolov10s", "yolov10m", "yolov10l", "yolov10x"]
+yolo_models += ["yolov9t", "yolov9s", "yolov9m", "yolov9c", "yolov9e"]  # NOTE: Different naming on v9 yolo_models
+yolo_models += ["yolov8n", "yolov8s", "yolov8m", "yolov8l", "yolov8x"]
+feeder = day_night_feeder
+# feeder = burst_feeder  # Use linear_feeder or day_night_feeder
 resolutions = [160, 320, 640, 1280]
 idle_before_start_1 = 120 # (seconds) Wait for yolo instances to receive their kafka assignments - otherwise might get stuck
 idle_before_start_2 = 0.5 * 60  # (seconds) Additional wait after Kafka is verified working
 idle_after_end = 0.5 * 60  # (seconds) Catch the tail of the experiment metrics
-experiment_duration = 600  # seconds
-max_mbps = 10  # 0.5 - 4 mbps are reasonable values depending on the model size
-breakpoints = 30  # Update data feed rate every experiment_duration/breakpoints seconds (low value -> staircase style data feed)
+total_runtime_hours = 24
+hours_per_model = total_runtime_hours / (len(resolutions) * len(yolo_models))
+seconds_per_model = hours_per_model * 3600
 yaml_template_path = "consumer_template.yaml"  # Template for running the experiments
 yaml_experiment_path = None  # This file will be created from the template
 # kafka_servers = 'localhost:10001,localhost:10002,localhost:10003'  # Servers for local testing
@@ -196,9 +215,9 @@ def zip_snapshot(snapshot_path, yolo_csv_folder=None, name="yolov8n"):
 
 log(f"Removing any leftover containers from previous experiments...")
 clean_up()
+wait_for_terminate(0)
 log(f"Make sure the Kafka topics exist")
 kafka_init.init_kafka(kafka_servers=kafka_servers, num_partitions=num_yolo_consumers)
-wait_for_terminate(0)
 log(f"Waiting for any delayed images before the next experiment...")
 leftover_images = dummy_validate.wait_for_results({-1}, kafka_servers=kafka_servers, msg_callback=None, timeout_s=5)
 log(f"Received {leftover_images} delayed images.")
@@ -249,8 +268,11 @@ for resolution in resolutions:
             idle_before_start_2)  # Wait for slower consumers to start and to give some slack on the measurement data
         # Feed images
         log("")
-        log("Feeding data.")
-        images_sent = feeder.run(max_mbps=max_mbps, breakpoints=200, duration_seconds=experiment_duration, n_cycles=3,
+        target_throughput = max_throughput_img_per_second[model][resolution]
+        max_mbps = img_per_second_to_mbps(target_throughput)
+        log(f"Feeding data (target: {target_throughput} images -- {max_mbps:.2f} mbps).")
+
+        images_sent = feeder.run(max_mbps=max_mbps, breakpoints=200, duration_seconds=seconds_per_model, n_cycles=5,
                                  kafka_servers=kafka_servers)
         image_ids = set(x for x in range(images_sent))
         log(f"Completed sending {images_sent} images.\n")
