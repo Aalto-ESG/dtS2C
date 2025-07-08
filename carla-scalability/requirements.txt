@@ -1,0 +1,9 @@
+carla
+pandas
+matplotlib
+seaborn
+psutil
+gputil
+jupyter
+pyarrow
+pynvml
