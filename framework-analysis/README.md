@@ -10,7 +10,13 @@ Industrial Logistics Warehouse (ILW) experiments.
 2. Process the raw data into a dataset using tools from `dataset-tools`
 3. Use scripts in this folder to visualize results from the processed dataset
 
+## Example data:
+
+- Check the ``dataset-tools/readme.md`` for details on downloading and preprocessing example datasets.
+  - You can use the example data to get familiar with the tools included in this repository without having to setup a computing cluster.
+
+
 ## Customization
 
-The analysis scripts included here is intended as an example. 
+The analysis scripts included here are intended as an example. 
 They are meant to be used as a starting point for analyzing experiments run on a cluster.

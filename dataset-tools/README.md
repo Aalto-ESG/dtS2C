@@ -8,6 +8,15 @@ The zip file contains:
 
 The scripts in this folder are intended to process these zips into a more usable format.
 
+## Example data:
+ - Example UTS / YOLO experiment (3.65 GB zip-file): https://drive.google.com/file/d/18rki8WgZj6EmSuRXUaAUEVBEU2pAQkbF/view?usp=sharing
+ - Example ILW / Lidar-experiment (2.25 GB zip-file): https://drive.google.com/file/d/1Maz4yqi7xeD2gWSioLEqCwlpNkqPBP88/view?usp=sharing
+ - You can use these example datasets to test the analysis tools:
+   1. Download dataset
+   2. Process dataset using tools from this folder
+   3. Use the other tools in this repository to analyze the processed data
+
+
 ## Usage:
 
 1. Collect data from the cluster
