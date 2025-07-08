@@ -1,2 +1,5 @@
 ujson
+pandas
+psutil
+pyarrow
 

@@ -26,8 +26,8 @@ if __name__ == "__main__":
     multiprocessing.set_start_method('spawn')  # Use 'spawn' on all OS platforms for consistency
 
 # This script will process all zips located at the input_path
-input_path = "../data/warehouse_4/snapshots/"
-output_path = "../data/minimized_warehouse_4/"
+input_path = "datasets/run_6"  # Path to dataset
+output_path = "processed_datasets/"
 namespace_filter = "workload"  # Ignore all namespaces that do not have this string in it
 use_column_filtering = False
 run_in_parallel = True  # parallel execution might cause running out of memory
