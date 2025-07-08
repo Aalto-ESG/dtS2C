@@ -17,6 +17,31 @@ communicate with each other to create a combined view of the world.
 Data can be fed to the cluster over Kafka either from real vehicles, simulated vehicles or 
 a previously collected dataset.
 
+# Examples
+
+These examples have configurable parameters, with default experiments running for 24 hours.
+
+1. **Maximum Throughput Test**
+   - Run `example_1_maximum_throughput_test.py` to benchmark maximum throughputs for each LiDAR resolution and worker 
+amount on your cluster
+   - Use these results to configure subsequent tests
+
+2. **Linear Test**
+   - Run `example_2_throughput_adjusted_linear_feed.py` to measure performance over time with linear feed-rate
+   - **Important:** Adjust maximum data feed rates based on results from test #1
+   - Note: Different cases process data at different rates; excessive data will oversaturate the cluster
+
+2. **Day-Night Cycle Test**
+   - Run `example_3_throughput_adjusted_day_night_cycle.py` to measure performance over time with feed-rate that varies over time
+   - **Important:** Adjust maximum data feed rates based on results from test #1
+   - Note: Different cases process data at different rates; excessive data will oversaturate the cluster
+
+3. **Autoscaling**
+   - Run `example_4_horizontal_pod_autoscale.py` for an experiment with Kubernetes Horizontal Pod Autoscaling (HPA) enabled.
+   - The HPA algorithm automatically adjusts the number of workers. The aim is to analyze the effectiveness of the autoscaling.
+
+**Outputs:** All experiments generate a zip file containing raw cluster metrics collected throughout the test.
+
 # How to debug locally
 - Optional: Launch kubernetes on Docker-Desktop (most of the scripts work without kubernetes)
 - Launch `local_kube_kafka/` with `docker compose up` (This runs outside kubernetes, but works with the local kubernetes setup)

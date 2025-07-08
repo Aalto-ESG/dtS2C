@@ -1,18 +1,25 @@
 ## Repository Overview
 
-- Create a `Kubernetes` cluster with baremetal hardware using six `NUC` machines:
-    - One master node.
-    - Five worker nodes.
-    - No virtualized machines.
+- Create a `Kubernetes` cluster with baremetal hardware.
+  - In our experiments, we used six `NUC` machines:
+      - One master node.
+      - Five worker nodes.
+      - No virtualized machines.
 - Deploy a complete monitoring stack to observe the cluster's performance, including:
     - `Prometheus`: Metrics scraping.
     - `Kepler`: Energy metrics.
     - `Grafana`: Near-real time metrics dashboards.
-- Perform controlled experiments remotely:
-    - Feed image matricies into a `Kafka` message queue at controlled intervals via `Python` script.
-    - Consume and process these matricies with `Yolo` models, deployed as `Kubernetes` pods.
-        - `Kafka` provides automatic load balancing, regardless of how many consumers are deployed.
-    - Feed inference statistics back into `Kafka`.
+- Two example applications:
+  - UTS: Object detection as a part of autonomous vehicle decision making:
+      - Feed image matricies into a `Kafka` message queue at controlled intervals via `Python` script.
+      - Consume and process these matrices with `Yolo` models, deployed as `Kubernetes` pods.
+          - `Kafka` provides automatic load balancing, regardless of how many consumers are deployed.
+      - Feed QoS statistics back into `Kafka`.
+  - ILW: Collaborative occupancy grid generation from shared LiDAR-data:
+      - Feed LiDAR-data into a `Kafka` message queue at controlled intervals via `Python` script.
+      - Consume and process this data with Grid-workers and Grid-masters, deployed as `Kubernetes` pods.
+          - `Kafka` provides automatic load balancing, regardless of how many consumers are deployed.
+      - Feed QoS statistics back into `Kafka`.
 - Observe the experiment's progress and performance through `Grafana` dashboards.
 - After an experiment concludes, create datasets from the generated metrics data in `Prometheus`.
 - Attempt to find patterns and correlations from these datasets.
@@ -46,6 +53,22 @@ which they built during their time in our research group.
 `screen -ls`  # list screens from current user
 
 `sudo ls -laR /var/run/screen/`  # List all screens running from all users
+
+
+## Folder structure and usage
+
+- Part 1: Cluster installation and setup
+  - ``00_install`` has instructions for installing related software stack on master and worker nodes.
+  - ``01_kubeadm_cluster`` has instructions for connecting worker-nodes to the kubernetes master.
+  - ``02_monitoring_stack`` has instructions for launching the monitoring stack, including Grafana, Prometheus, and Kepler.
+- Part 2: Manually running experiments (example)
+  - ``03_kafka_mq``, ``04_yolo_consumer``, ``05_data_producer``, ``06_full_experiment``, ``07_extract_metrics`` 
+have instructions for manually launching all components related to the UTS example application.
+- Part 3: Automated experiment suites
+  - ``90_openvino_yolo_experiment`` has scripts for automatically running the UTS experiments related to our paper.
+  - ``91_warehouse_experiment`` has scripts for automatically running the ILW experiments related to our paper.
+  - These folders include scripts for automatically deploying the related pods, feeding data from datasets, and extracting cluster data at the end of each experiment.
+  - This data can then be analyzed by the tools included in this repository.
 
 
 ## 99% Success Rate Experiment Operation Guide: The Bare Minimums Step-by-step

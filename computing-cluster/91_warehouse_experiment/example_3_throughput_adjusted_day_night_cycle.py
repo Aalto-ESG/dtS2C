@@ -1,30 +1,11 @@
 """
-Run_4: Fixes
+Throughput-adjusted day-night-cycle feed experiment.
 
-Notes from run_1:
---- 1000 pcl -> less than 1 minute experiment with workers=? and lidar_points=?
---- push 1000 pcl (5000 points per pcl) in 3 seconds
+Feed data at varying rates for different number of workers. The maximum feed-rate is separate for each worker-resolution pair.
+Use and analyze 'example_1_maximum_throughput_test.py' to get the maximum feed-rates for each case.
 
-Changes to run_2:
-- Increase experiment to 10000 pcl messages
-- Disable non-functioning kafka topic clearing
-
-Changes to run_3:
-- The qos-csv files are missing -> fix this
-
-Changes to run_4:
-- Fixed issue with num_workers=(3,5), since datasets do not exist for these values
--- Default to use the dataset with 6 robots for all unknown values
-- Fixed issues with kafka topics and issues where only one worker was receiving data
-- Increased number of runs and data
-- Set fixed amount of feeder-threads
-
-Changes to run_5:
-- Scale max mbps based on max throughput based on run_4 analysis
-- Add linear feeder that tries to keep some mbps value when feeding data
-
-Changes to run_6:
-- Use day-night-cycle feeder instead of linear
+The aim is to find out how the application behaves with a feed-rate that varies over time.
+Information about the maximum throughput is required to avoid over-saturating the cluster.
 """
 
 

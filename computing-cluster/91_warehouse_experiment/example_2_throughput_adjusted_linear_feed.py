@@ -1,18 +1,10 @@
 """
-Run_3: Longer run
+Throughput-adjusted linear feed experiment.
 
-Notes from run_1:
---- 1000 pcl -> less than 1 minute experiment with workers=? and lidar_points=?
---- push 1000 pcl (5000 points per pcl) in 3 seconds
+Feed data at fixed rate for different number of workers. The feed-rate is separate for each worker-resolution pair.
+Use and analyze 'example_1_maximum_throughput_test.py' to get the feed-rates for each case.
 
-Changes to run_2:
-- Increase experiment to 10000 pcl messages
-- Disable non-functioning kafka topic clearing
-
-Changes to run_3:
-- The qos-csv files are missing -> fix this
-
-
+The aim is to find out how the application behaves with a linear feed-rate, without over-saturating the cluster.
 """
 
 
@@ -23,7 +15,7 @@ import subprocess
 import time
 import yaml
 import create_deployment_yaml
-from warehouse import burst_feeder
+from warehouse import linear_feeder, burst_feeder
 from warehouse import kafka_init
 from warehouse.msg_to_csv import MessageToCSVProcessor
 from warehouse.validate_results import ValidationThread
@@ -39,19 +31,17 @@ parser.add_argument("--smoketest", action="store_true", help="Run a short smoket
 
 args = parser.parse_args()  # Parse arguments
 
-
-feeder = burst_feeder
-# feeder = burst_feeder  # Use linear_feeder or day_night_feeder
 kafka_wait_timeout = 600
 idle_before_start_1 = 120 # (seconds) Wait for application instances to receive their kafka assignments - otherwise might get stuck
 idle_before_start_2 = 0.5 * 60  # (seconds) Additional wait after Kafka is verified working
 idle_after_end = 0.5 * 60  # (seconds) Catch the tail of the experiment metrics
 total_runtime_hours = 24
-num_workers = [1, 2, 3, 4, 5, 6]  # Number of lidar workers (number of worker pods launched on cluster)
+num_workers = [30, 20, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]  # Number of lidar workers (number of worker pods launched on cluster)
 lidar_points = [1000, 5000, 10_000]  # Number of points in a single point cloud (Depends on dataset)
+data_feeder_threads = 8  # In addition to feeding speed, this also affects which robot lidar data is used as input
 hours_per_model = total_runtime_hours / (len(num_workers) * len(lidar_points))
-seconds_per_model = hours_per_model * 3600  # TODO: How to estimate and control time?
-data_per_run = 10000  # TODO: how many items per unit of time?
+seconds_per_model = hours_per_model * 3600
+max_throughput_scale = 0.95  # Better to feed data just below the max throughput to avoid congestion
 deploy_worker_template_path = "kubernetes_templates/worker_template.yaml"  # Template for running the experiments
 deploy_worker_experiment_path = None  # This file will be created from the template
 deploy_master_template_path = "kubernetes_templates/master_template.yaml"  # Template for running the experiments
@@ -63,6 +53,66 @@ worker_name = "lidar-worker"
 master_name = "lidar-master"
 kube_application_names = [worker_name, master_name]
 debug_qos_csv_saving = False
+
+bytes_per_pcl = {
+    1000: 12000,
+    5000: 60000,
+    10_000: 120000}
+measured_max_throughputs = {  # [resolution][num_workers] = max_throughput
+    1000: {
+        8: 342.0,
+        30: 1120.8,
+        2: 87.0,
+        6: 261.0,
+        5: 217.6,
+        7: 300.6,
+        1: 47.8,
+        3: 132.4,
+        10: 426.6,
+        4: 177.8,
+        20: 821.4,
+        9: 384.0
+    },
+    5000: {
+        5: 94.2,
+        1: 20.6,
+        7: 129.8,
+        2: 38.2,
+        6: 111.8,
+        9: 165.8,
+        30: 411.6,
+        4: 76.6,
+        20: 342.2,
+        10: 183.8,
+        8: 147.6,
+        3: 57.2
+    },
+    10000: {
+        30: 229.8,
+        6: 68.2,
+        20: 206.0,
+        9: 100.6,
+        4: 45.6,
+        10: 111.2,
+        2: 22.6,
+        8: 89.8,
+        5: 57.6,
+        1: 11.8,
+        3: 34.8,
+        7: 78.4
+    }
+}
+
+def get_experiment_throughput_mbps(resolution, num_workers):
+    """
+    Returns the throughput of the experiment in MB/s based on values
+    obtained from run_4.
+    """
+    pcl_per_second = measured_max_throughputs[resolution][num_workers]
+    bytes_per_second = pcl_per_second * bytes_per_pcl[resolution]
+    megabytes_per_second = bytes_per_second / (1024 * 1024)
+    scaled_megabytes_per_second = megabytes_per_second * max_throughput_scale
+    return scaled_megabytes_per_second
 
 
 logging.basicConfig(
@@ -91,7 +141,6 @@ if args.smoketest:
         kafka_servers = "localhost:10001"
 
     experiment_duration = 60  # Short experiment duration
-    data_per_run = 100
     idle_before_start_1 = 20
     idle_before_start_2 = 10  # Shorter wait times
     idle_after_end = 10
@@ -105,6 +154,7 @@ def scale_and_wait_for_replicas(num_replicas, application_name):
     # Start scaling the application
     subprocess.run(
         ["kubectl", "scale", "deployment", f"{application_name}", "-n", f"{namespace}", f"--replicas={num_replicas}"])
+    log(f"Scaling {application_name} to {num_replicas} replicas")
     # Wait for the application to scale
     while True:
         result = subprocess.run(
@@ -118,6 +168,7 @@ def scale_and_wait_for_replicas(num_replicas, application_name):
             break
         log(f"Waiting for {len(running_pods)}/{num_replicas} {application_name} pods to be running...")
         time.sleep(5)  # Wait for 10 seconds before checking again
+    log(f"Application {application_name} has now {num_replicas} replicas running")
 
 
 def wait_for_terminate(num_replicas, application_name):
@@ -134,12 +185,14 @@ def wait_for_terminate(num_replicas, application_name):
             break
         log(f"Waiting for {len(running_pods)}/{num_replicas} application ({application_name}) pods to completely stop...")
         time.sleep(5)  # Wait for 10 seconds before checking again
+    log(f"Application {application_name} is completely stopped")
 
 
 # Function to delete the deployment and service
 def clean_up():
     for app in kube_application_names:
         subprocess.run(["kubectl", "scale", "deployment", f"{app}", "-n", f"{namespace}", "--replicas=0"])
+        log(f"Setting {app} replicas to 0")
 
 
 def get_formatted_time():
@@ -161,8 +214,16 @@ runs = [(workers, points) for workers in num_workers for points in lidar_points]
 for run in runs:
     run_start = time.time()
     workers, points = run
-    dataset_path = f"datasets/robots-{workers}_points-{points}.hdf5"
     run_name = f"{run}".replace(" ", "").replace(",", ".")
+    dataset_path = f"datasets/robots-{workers}_points-{points}.hdf5"
+    if not os.path.exists(dataset_path):
+        # Not all worker values have a specific dataset
+        dataset_path = f"datasets/robots-6_points-{points}.hdf5"
+    if not os.path.exists(dataset_path):
+        # Even the default dataset is missing!
+        log(f"Dataset not found. Skipping run {run_name}. {dataset_path}")
+        continue
+
     log(f"Starting experiment with workers={workers} and lidar_points={points}")
     qos_csv_folder = f"qos_outputs/{time.time()}_{run_name}/".replace(" ", "").replace(",", ".")
     os.makedirs(qos_csv_folder, exist_ok=True)
@@ -170,13 +231,14 @@ for run in runs:
 
     # Init and/or reset kafka
     # Specify kafka topics and the number of partitions
-    topics = {"grid_worker_input": workers, "grid_master_input": 1, "grid_worker_validate": 1, "grid_master_validate": 1}
+    topics = {"grid_master_input": 1, "grid_worker_validate": 1, "grid_master_validate": 1}
     log(f"Making sure the Kafka topics exist")
     for topic, num_partitions in topics.items():
         # Making sure the topic is initialized with correct amount of partitions
-        kafka_init.init_kafka(kafka_servers=kafka_servers, num_partitions=num_partitions, topic_name=topic)
-        # TODO: Making sure the topic contains no messages from previous experiments
-        # kafka_init.clear_topic(kafka_servers=kafka_servers, topic_name=topic)
+        kafka_init.init_kafka(kafka_servers=kafka_servers, num_partitions=num_partitions, topic_name=topic, log_func=log)
+        kafka_init.test_topic(kafka_servers=kafka_servers, topic_name=topic, log_func=log)
+    kafka_init.recreate_topic(kafka_servers=kafka_servers, num_partitions=workers, topic_name="grid_worker_input", log_func=log)
+    kafka_init.test_topic(kafka_servers=kafka_servers, topic_name="grid_worker_input", log_func=log)
 
     # Update yaml and deploy
     log("")
@@ -208,9 +270,9 @@ for run in runs:
     log("")
     log("Sending some data to check that at least one pod can process data.")
 
-    msgs_sent = feeder.run(dataset_path=dataset_path,
+    msgs_sent = burst_feeder.run(dataset_path=dataset_path,
                            num_items=5,
-                           num_threads=workers,
+                           num_threads=data_feeder_threads,
                            kafka_servers=kafka_servers)
     log(f"Sent {msgs_sent} messages to Kafka")
     msg_ids = set(x for x in range(msgs_sent))
@@ -234,7 +296,7 @@ for run in runs:
         idle_before_start_2)  # Wait for slower consumers to start and to give some slack on the measurement data
     # Feed frames
     log("")
-    log(f"Feeding data (frames: {None} frames -- num_workers: {None}).")
+
 
     master_qos_saver = MessageToCSVProcessor(qos_csv_folder, name_prefix="master", verbose=debug_qos_csv_saving)
     worker_qos_saver = MessageToCSVProcessor(qos_csv_folder, name_prefix="worker", verbose=debug_qos_csv_saving)
@@ -245,9 +307,14 @@ for run in runs:
                                         msg_callback=worker_qos_saver.process_event)
     worker_validator.start()
 
-    frames_sent = feeder.run(dataset_path=dataset_path,
-                             num_items=data_per_run,
-                             num_threads=workers,
+    target_mbps = get_experiment_throughput_mbps(points, workers)
+    log(f"Feeding data (target_mbps: {target_mbps} MB/s ({max_throughput_scale*100} % of maximum) "
+        f"-- feed_workers: {data_feeder_threads} "
+        f"-- duration_seconds: {seconds_per_model} seconds).")
+    frames_sent = linear_feeder.run(dataset_path=dataset_path,
+                             duration_seconds=seconds_per_model,
+                             target_mbps=target_mbps,
+                             num_threads=data_feeder_threads,
                              kafka_servers=kafka_servers)
     msg_ids = set(x for x in range(frames_sent))
     log(f"Completed sending {frames_sent} point clouds.\n")
@@ -298,6 +365,8 @@ for run in runs:
     leftover_msgs += worker_validator.wait_for_msg_ids(msg_ids, timeout_s=10)
     log(f"Received {leftover_msgs} delayed messages.")
 
-
+    log(f"Waiting for left-over pods to fully terminate...")
+    wait_for_terminate(0, master_name)
+    wait_for_terminate(0, worker_name)
     log(f"Experiment with warehouse_MODEL={run_name} completed (total {time.time() - run_start:.2f} seconds).\n\n")
 log("All experiments completed.")
