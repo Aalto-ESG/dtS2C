@@ -11,8 +11,11 @@ This repository is split into four parts:
    - As an output, produces zip-files including raw metrics from the cluster and QoS metrics from the workload applications.
 5. `Dataset-tools`
    - Contains tools for processing the raw metrics from the zip-files into Pandas DataFrames to make the data easier to handle.
+   - Contains links to download example data.
 7. `Analysis`
    - Contains examples for plotting the metrics from the experiment DataFrames in various formats.
 9. `ML-predict`
    - Contains examples for processing the experiment DataFrames into datasets with input features and labels.
    - These datasets can then be used for training machine learning models.
+10. `CARLA-scalability`
+   - Contains examples for measuring energy efficiency and scalability of CARLA.
